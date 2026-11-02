@@ -1,0 +1,15 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run SaveMeal Flutter app",
+      "type": "shell",
+      "command": "flutter",
+      "args": ["run"],
+      "options": {
+        "cwd": "${workspaceFolder}\\mobile"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

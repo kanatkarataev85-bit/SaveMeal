@@ -1,0 +1,649 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
+
+type Role = 'customer' | 'restaurant' | 'organization' | 'administrator';
+
+type User = {
+  id: number;
+  name: string;
+  email: string;
+  role: Role;
+  approved: boolean;
+  organization_name?: string | null;
+  city?: string | null;
+  phone?: string | null;
+};
+
+type Listing = {
+  id: number;
+  title: string;
+  description: string;
+  category: string;
+  service_type: 'sale' | 'donation';
+  price: number;
+  original_price: number;
+  portions: number;
+  available_portions: number;
+  allergens: string;
+  ingredients: string;
+  pickup_window: string;
+  storage_instructions: string;
+  image_url: string;
+  pickup_available: boolean;
+  delivery_available: boolean;
+  delivery_area: string;
+  delivery_fee: number;
+  status: string;
+  restaurant_name: string;
+  actual_restaurant_name: string;
+  is_anonymous: boolean;
+  notes?: string;
+};
+
+type Order = {
+  id: number;
+  customer_id: number;
+  restaurant_id: number;
+  listing_id: number;
+  quantity: number;
+  total_price: number;
+  status: string;
+  pickup_type: 'pickup' | 'delivery';
+  notes?: string;
+};
+
+type Complaint = {
+  id: number;
+  category: string;
+  description: string;
+  status: string;
+};
+
+const formatKgs = (value: number) => `${value.toLocaleString('ru-RU')} с`;
+
+async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers ?? {}),
+    },
+    credentials: 'include',
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.message ?? 'Ошибка запроса');
+  }
+  return data as T;
+}
+
+function NavBar({ user, onLogout }: { user: User | null; onLogout: () => Promise<void> }) {
+  return (
+    <header className="topbar">
+      <div className="container nav-inner">
+        <Link to="/" className="brand">
+          <span className="brand-mark">S</span>
+          SaveMeal
+        </Link>
+        <nav className="nav-links">
+          <Link to="/">Главная</Link>
+          <Link to="/catalog">Каталог</Link>
+          <Link to="/donations">Пожертвования</Link>
+          {user ? <Link to="/dashboard">Личный кабинет</Link> : <Link to="/login">Войти</Link>}
+        </nav>
+        {user ? (
+          <div className="user-pill-row">
+            <span className="user-pill">{user.name}</span>
+            <button className="secondary-button" onClick={() => onLogout()}>Выйти</button>
+          </div>
+        ) : (
+          <Link className="primary-button" to="/login">Присоединиться</Link>
+        )}
+      </div>
+    </header>
+  );
+}
+
+function LandingPage() {
+  return (
+    <main>
+      <section className="hero">
+        <div className="container hero-grid">
+          <div>
+            <span className="eyebrow">SaveMeal • Бишкек</span>
+            <h1>Спасаем еду. Помогаем людям. Снижаем пищевые отходы.</h1>
+            <p>
+              SaveMeal объединяет кафе, покупателей, приюты и администраторов в одном безопасном сервисе —
+              для продажи остатков по сниженным ценам и бесплатной передачи еды тем, кто в ней нуждается.
+            </p>
+            <div className="cta-row">
+              <Link className="primary-button" to="/catalog">Посмотреть предложения</Link>
+              <Link className="secondary-button" to="/login">Стать участником</Link>
+            </div>
+            <ul className="mini-stats">
+              <li><strong>1.2k+</strong> порций спасено</li>
+              <li><strong>38</strong> партнеров</li>
+              <li><strong>7</strong> организаций</li>
+            </ul>
+          </div>
+          <div className="hero-card">
+            <div className="feature-badge">Две отдельные ветки</div>
+            <div className="feature-card green">
+              <h3>Платные предложения</h3>
+              <p>Рестораны продают безопасную еду со скидкой, а покупатели забирают её в удобное время.</p>
+            </div>
+            <div className="feature-card beige">
+              <h3>Бесплатные пожертвования</h3>
+              <p>Проверенные приюты и социальные организации могут подавать запросы на продукцию.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="container">
+          <div className="section-heading">
+            <span className="eyebrow">Как это работает</span>
+            <h2>Простой и безопасный процесс</h2>
+          </div>
+          <div className="cards-grid three-col">
+            <div className="info-card">
+              <span className="card-number">01</span>
+              <h3>Рестораны добавляют остатки</h3>
+              <p>Указывают состав, аллергенность, срок и условия выдачи.</p>
+            </div>
+            <div className="info-card">
+              <span className="card-number">02</span>
+              <h3>Покупатели и организации выбирают</h3>
+              <p>Сервисы разделены, чтобы не путать платные заказы и бесплатные заявки.</p>
+            </div>
+            <div className="info-card">
+              <span className="card-number">03</span>
+              <h3>Администратор проверяет</h3>
+              <p>Безопасность, жалобы и статусы отслеживаются через единый модерационный экран.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="section alt-section">
+        <div className="container">
+          <div className="section-heading">
+            <span className="eyebrow">Реальные сценарии</span>
+            <h2>Платные заказы и donation” — две разные ветки</h2>
+          </div>
+          <div className="cards-grid two-col">
+            <div className="info-card">
+              <h3>Для клиентов</h3>
+              <ul className="text-list">
+                <li>Поиск еды по категории и цене</li>
+                <li>Проверка состава и аллергенов</li>
+                <li>Выбор самовывоза или доставки</li>
+                <li>История заказов и жалобы</li>
+              </ul>
+            </div>
+            <div className="info-card">
+              <h3>Для организаций</h3>
+              <ul className="text-list">
+                <li>Просмотр доступных donation-наборов</li>
+                <li>Отправка запросов по необходимости</li>
+                <li>Отслеживание статусов</li>
+                <li>Обработка заявок через модерацию</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function AuthPage({ onAuth }: { onAuth: (user: User) => void }) {
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [form, setForm] = useState({ name: '', email: 'customer@savemeal.kg', password: 'Customer123!', role: 'customer' });
+  const [error, setError] = useState('');
+  const navigate = useNavigate();
+
+  async function submit() {
+    try {
+      const response = mode === 'login'
+        ? await apiFetch<{ user: User; token: string }>('/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ email: form.email, password: form.password }),
+          })
+        : await apiFetch<{ user: User; token: string }>('/auth/register', {
+            method: 'POST',
+            body: JSON.stringify({ name: form.name, email: form.email, password: form.password, role: form.role }),
+          });
+      onAuth(response.user);
+      navigate('/dashboard');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка входа');
+    }
+  }
+
+  return (
+    <div className="page-shell">
+      <div className="auth-panel">
+        <div className="toggle-row">
+          <button className={mode === 'login' ? 'tab active' : 'tab'} onClick={() => setMode('login')}>Вход</button>
+          <button className={mode === 'register' ? 'tab active' : 'tab'} onClick={() => setMode('register')}>Регистрация</button>
+        </div>
+
+        {mode === 'register' && (
+          <label>
+            <span>Имя</span>
+            <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Ваше имя" />
+          </label>
+        )}
+
+        <label>
+          <span>Email</span>
+          <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="name@example.com" />
+        </label>
+
+        <label>
+          <span>Пароль</span>
+          <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="•••••••" />
+        </label>
+
+        {mode === 'register' && (
+          <label>
+            <span>Роль</span>
+            <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as 'customer' | 'restaurant' | 'organization' })}>
+              <option value="customer">Покупатель</option>
+              <option value="restaurant">Ресторан</option>
+              <option value="organization">Организация</option>
+            </select>
+          </label>
+        )}
+
+        {error && <div className="error-box">{error}</div>}
+
+        <button className="primary-button wide" onClick={submit}>{mode === 'login' ? 'Войти' : 'Создать аккаунт'}</button>
+        <p className="muted-small">
+          Демо-аккаунты: customer@savemeal.kg / Customer123!, restaurant@savemeal.kg / Restaurant123!, org@savemeal.kg / Org123456!
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function CatalogPage() {
+  const [items, setItems] = useState<Listing[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    apiFetch<{ items: Listing[] }>('/listings')
+      .then((data) => setItems(data.items))
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const saleItems = items.filter((item) => item.service_type === 'sale');
+  const donationItems = items.filter((item) => item.service_type === 'donation');
+
+  if (loading) return <div className="page-shell"><div className="loader">Загрузка каталога…</div></div>;
+
+  return (
+    <div className="page-shell">
+      <div className="container">
+        <div className="section-heading">
+          <span className="eyebrow">Каталог</span>
+          <h2>Платные предложения</h2>
+        </div>
+        {error && <div className="error-box">{error}</div>}
+        <div className="cards-grid three-col">
+          {saleItems.map((item) => (
+            <Link className="listing-card" to={`/listing/${item.id}`} key={item.id}>
+              <img src={item.image_url} alt={item.title} />
+              <div className="listing-body">
+                <div className="listing-topline">
+                  <span className="tag sale">Цена</span>
+                  <span>{item.available_portions} шт.</span>
+                </div>
+                <h3>{item.title}</h3>
+                <p>{item.description}</p>
+                <div className="meta-row">
+                  <strong>{formatKgs(item.price)}</strong>
+                  <span>{item.restaurant_name}</span>
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+
+        <div className="section-heading padded-top">
+          <h2>Пожертвования</h2>
+        </div>
+        <div className="cards-grid three-col">
+          {donationItems.map((item) => (
+            <Link className="listing-card" to={`/listing/${item.id}`} key={item.id}>
+              <img src={item.image_url} alt={item.title} />
+              <div className="listing-body">
+                <div className="listing-topline">
+                  <span className="tag donation">Даром</span>
+                  <span>{item.available_portions} доступно</span>
+                </div>
+                <h3>{item.title}</h3>
+                <p>{item.description}</p>
+                <div className="meta-row">
+                  <strong>Для приютов</strong>
+                  <span>{item.restaurant_name}</span>
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DonationPage() {
+  const [items, setItems] = useState<Listing[]>([]);
+  useEffect(() => {
+    apiFetch<{ items: Listing[] }>('/donations').then((data) => setItems(data.items)).catch(() => setItems([]));
+  }, []);
+
+  return (
+    <div className="page-shell">
+      <div className="container">
+        <div className="section-heading">
+          <span className="eyebrow">Бесплатная помощь</span>
+          <h2>Доступные donation-предложения</h2>
+        </div>
+        <div className="cards-grid three-col">
+          {items.map((item) => (
+            <Link className="listing-card" to={`/listing/${item.id}`} key={item.id}>
+              <img src={item.image_url} alt={item.title} />
+              <div className="listing-body">
+                <div className="listing-topline">
+                  <span className="tag donation">Бесплатно</span>
+                  <span>{item.available_portions} шт.</span>
+                </div>
+                <h3>{item.title}</h3>
+                <p>{item.description}</p>
+                <div className="meta-row">
+                  <strong>Запрос от организации</strong>
+                  <span>{item.restaurant_name}</span>
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ListingDetailPage() {
+  const { id } = useParams();
+  const [item, setItem] = useState<Listing | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!id) return;
+    apiFetch<{ item: Listing }>(`/listings/${id}`)
+      .then((data) => setItem(data.item))
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  if (loading) return <div className="page-shell"><div className="loader">Загрузка листинга…</div></div>;
+  if (!item) return <div className="page-shell"><div className="container error-box">{error || 'Листинг не найден.'}</div></div>;
+
+  return (
+    <div className="page-shell">
+      <div className="container detail-layout">
+        <div className="detail-image-wrap">
+          <img src={item.image_url} alt={item.title} className="detail-image" />
+        </div>
+        <div className="detail-info">
+          <span className={`tag ${item.service_type === 'sale' ? 'sale' : 'donation'}`}>{item.service_type === 'sale' ? 'Цена' : 'Donation'}</span>
+          <h1>{item.title}</h1>
+          <p>{item.description}</p>
+
+          <div className="detail-stats">
+            <div><strong>{item.available_portions}</strong><span>шт. доступно</span></div>
+            <div><strong>{item.service_type === 'sale' ? formatKgs(item.price) : 'Бесплатно'}</strong><span>стоимость</span></div>
+            <div><strong>{item.category}</strong><span>категория</span></div>
+          </div>
+
+          <div className="detail-meta">
+            <p><strong>Поставщик:</strong> {item.restaurant_name}</p>
+            <p><strong>Состав:</strong> {item.ingredients || 'Не указан'}</p>
+            <p><strong>Аллергены:</strong> {item.allergens || 'Не указаны'}</p>
+            <p><strong>Окно выдачи:</strong> {item.pickup_window}</p>
+            <p><strong>Хранение:</strong> {item.storage_instructions || 'Не указано'}</p>
+          </div>
+
+          <div className="cta-row stacked">
+            {item.service_type === 'sale' ? (
+              <button className="primary-button" onClick={() => navigate('/checkout', { state: { listing: item } })}>Заказать</button>
+            ) : (
+              <button className="primary-button" onClick={() => navigate('/login')}>Подать запрос на помощь</button>
+            )}
+            <button className="secondary-button" onClick={() => navigate('/catalog')}>Назад к каталогу</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CheckoutPage() {
+  const navigate = useNavigate();
+  const location = useMemo(() => window.history.state?.usr ?? {}, []);
+  const listing = (location as { listing?: Listing }).listing as Listing | undefined;
+  const [quantity, setQuantity] = useState(1);
+  const [pickupType, setPickupType] = useState<'pickup' | 'delivery'>('pickup');
+  const [notes, setNotes] = useState('');
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  const total = (listing?.price ?? 0) * quantity;
+
+  async function placeOrder() {
+    if (!listing) {
+      setError('Сначала выберите предложение.');
+      return;
+    }
+
+    try {
+      const result = await apiFetch<{ order: Order; message: string }>('/orders', {
+        method: 'POST',
+        body: JSON.stringify({ listingId: listing.id, quantity, pickupType, notes }),
+      });
+      setMessage(result.message);
+      setError('');
+      setTimeout(() => navigate('/dashboard'), 800);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка оформления заказа');
+    }
+  }
+
+  if (!listing) {
+    return <div className="page-shell"><div className="container error-box">Выберите блюдо из каталога.</div></div>;
+  }
+
+  return (
+    <div className="page-shell">
+      <div className="container checkout-wrap">
+        <div className="checkout-card">
+          <h2>Оформление заказа</h2>
+          <div className="checkout-item">
+            <img src={listing.image_url} alt={listing.title} />
+            <div>
+              <h3>{listing.title}</h3>
+              <p>{listing.restaurant_name}</p>
+            </div>
+          </div>
+
+          <label>
+            <span>Количество</span>
+            <input type="number" min={1} max={listing.available_portions} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} />
+          </label>
+
+          <label>
+            <span>Способ получения</span>
+            <select value={pickupType} onChange={(e) => setPickupType(e.target.value as 'pickup' | 'delivery')}>
+              <option value="pickup">Самовывоз</option>
+              <option value="delivery">Доставка</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Заметки</span>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Например: этаж, время забора..." />
+          </label>
+
+          <div className="summary-box">
+            <p><span>Итого</span> <strong>{formatKgs(total)}</strong></p>
+            <p>Оплата: <strong>при получении</strong></p>
+          </div>
+
+          {error && <div className="error-box">{error}</div>}
+          {message && <div className="success-box">{message}</div>}
+          <button className="primary-button wide" onClick={placeOrder}>Подтвердить заказ</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DashboardPage({ user, onAuth }: { user: User | null; onAuth: (value: User | null) => void }) {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const [overview, setOverview] = useState<any>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    apiFetch<{ items: Order[] }>('/orders/my').then((data) => setOrders(data.items)).catch(() => setOrders([]));
+    if (user.role === 'administrator') {
+      apiFetch<any>('/admin/overview').then((data) => setOverview(data)).catch(() => setOverview(null));
+    }
+  }, [user]);
+
+  if (!user) {
+    return <div className="page-shell"><div className="container error-box">Авторизуйтесь для доступа в кабинет.</div></div>;
+  }
+
+  return (
+    <div className="page-shell">
+      <div className="container dashboard-shell">
+        <div className="welcome-card">
+          <div>
+            <span className="eyebrow">Личный кабинет</span>
+            <h2>{user.name}</h2>
+          </div>
+          <div className="role-badge">{user.role}</div>
+        </div>
+
+        {user.role === 'customer' && (
+          <div className="cards-grid two-col">
+            <div className="info-card">
+              <h3>Мои заказы</h3>
+              {orders.length === 0 ? <p>Пока нет заказов.</p> : orders.map((order) => (
+                <div key={order.id} className="mini-row"><span>#{order.id}</span><strong>{order.status}</strong><span>{formatKgs(order.total_price)}</span></div>
+              ))}
+            </div>
+            <div className="info-card">
+              <h3>Жалобы</h3>
+              <button className="secondary-button" onClick={() => alert('Форма жалобы доступна в готовой версии MVP.')}>Подать жалобу</button>
+            </div>
+          </div>
+        )}
+
+        {user.role === 'restaurant' && (
+          <div className="cards-grid two-col">
+            <div className="info-card">
+              <h3>Статусы заказов</h3>
+              {orders.length === 0 ? <p>Нет заказов.</p> : orders.map((order) => (
+                <div key={order.id} className="mini-row"><span>Заказ #{order.id}</span><strong>{order.status}</strong><span>{order.quantity} шт.</span></div>
+              ))}
+            </div>
+            <div className="info-card">
+              <h3>Управление листингами</h3>
+              <button className="secondary-button" onClick={() => alert('Создание/редактирование листинга доступно в следующем релизе.')}>Добавить новое предложение</button>
+            </div>
+          </div>
+        )}
+
+        {user.role === 'organization' && (
+          <div className="cards-grid two-col">
+            <div className="info-card">
+              <h3>Запросы на помощь</h3>
+              <p>Вы можете просматривать доступные donation-акции через раздел «Пожертвования».</p>
+            </div>
+            <div className="info-card">
+              <h3>Статус аккаунта</h3>
+              <p>{user.approved ? 'Аккаунт подтверждён администратором.' : 'Ожидание проверки модератором.'}</p>
+            </div>
+          </div>
+        )}
+
+        {user.role === 'administrator' && overview && (
+          <div className="cards-grid three-col">
+            <div className="info-card">
+              <h3>Рестораны на проверке</h3>
+              <strong>{overview.stats.restaurantPending}</strong>
+            </div>
+            <div className="info-card">
+              <h3>Организации на проверке</h3>
+              <strong>{overview.stats.orgPending}</strong>
+            </div>
+            <div className="info-card">
+              <h3>Новые жалобы</h3>
+              <strong>{overview.stats.newComplaints}</strong>
+            </div>
+          </div>
+        )}
+
+        <button className="primary-button" onClick={() => onAuth(null)}>Сбросить сессию</button>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    apiFetch<{ user: User }>('/auth/me')
+      .then((data) => setUser(data.user))
+      .catch(() => setUser(null))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleLogout() {
+    await apiFetch('/auth/logout', { method: 'POST' });
+    setUser(null);
+  }
+
+  if (loading) {
+    return <div className="loader-screen">Загрузка SaveMeal…</div>;
+  }
+
+  return (
+    <>
+      <NavBar user={user} onLogout={handleLogout} />
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/login" element={<AuthPage onAuth={setUser} />} />
+        <Route path="/catalog" element={<CatalogPage />} />
+        <Route path="/donations" element={<DonationPage />} />
+        <Route path="/listing/:id" element={<ListingDetailPage />} />
+        <Route path="/checkout" element={<CheckoutPage />} />
+        <Route path="/dashboard" element={<DashboardPage user={user} onAuth={setUser} />} />
+      </Routes>
+    </>
+  );
+}
+
+export default App;
