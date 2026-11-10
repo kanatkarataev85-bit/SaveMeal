@@ -6,9 +6,21 @@ SaveMeal is a mobile-first food rescue application for Bishkek, Kyrgyzstan.
 
 The current customer app is in [`mobile/`](./mobile/README.md). In VS Code,
 select **SaveMeal (Flutter)** in Run and Debug, or run `flutter run` from the
-`mobile` directory. The app uses local sample listings; registration and login
-can connect to Supabase and save user profiles to `public.profilespro` when
-configured as described in the mobile README.
+`mobile` directory. The app uses Supabase for profiles, listings and orders.
+Orders are pickup-only and are paid for at collection; the `service_role` key
+must never be used by the app.
+
+Apply `supabase/migrations/20261110000000_orders.sql` manually in the Supabase
+SQL Editor after the `profilespro`, roles/listings, original-price and
+listing-image migrations. Do not run the legacy
+`20261015000000_savemeal.sql` migration. This workspace change does not apply
+any migration to a Supabase project.
+
+The seller-application workflow is defined in
+`supabase/migrations/20261111000000_seller_applications.sql`. Apply it manually
+after the orders migration when ready; it forces newly created profiles to the
+customer role and lets administrators promote approved applicants to verified
+restaurants. It does not modify existing profiles such as PitStop.
 
 ## Backend API (separate from the mobile app)
 
@@ -83,14 +95,8 @@ Public:
 
 ## Demo data
 
-Demo accounts are seeded automatically in development mode:
-
-- customer@savemeal.kg / Customer123!
-- restaurant@savemeal.kg / Restaurant123!
-- org@savemeal.kg / Org123456!
-- admin@savemeal.kg / Admin123!
-
-Demo credentials are intentionally included for development and hackathon use only.
+Use locally configured development accounts to test customer, restaurant,
+organization and administrator workflows. Do not commit account credentials.
 
 ## Validation
 
@@ -130,7 +136,7 @@ Remaining as future work:
 ## Demo script
 
 1. Open http://localhost:5173 — landing page shows live stats from `/api/stats`.
-2. Log in as `customer@savemeal.kg`, open the catalog, apply filters, order an item with delivery and check the transparent price breakdown.
-3. Log in as `restaurant@savemeal.kg`, create a new listing (it goes to moderation), then move an order through confirm → prepare → ready → complete.
-4. Log in as `admin@savemeal.kg`, open the moderation panel and approve the pending listing.
-5. Log in as `org@savemeal.kg`, send a donation request, then switch back to the restaurant to approve it.
+2. Log in with a customer account, select food in the catalog, place a pickup order and check its pickup code and on-site payment instructions.
+3. Log in with a restaurant account, create a new listing (it goes to moderation), then confirm, complete or cancel its orders in the restaurant panel.
+4. Log in with an administrator account, open the moderation panel and approve the pending listing.
+5. Log in with an organization account, send a donation request, then switch back to the restaurant to approve it.
